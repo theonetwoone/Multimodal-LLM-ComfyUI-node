@@ -83,12 +83,34 @@ def _cache_key(parts: tuple[Any, ...]) -> str:
     return hashlib.sha256(repr(parts).encode("utf-8")).hexdigest()[:24]
 
 
+def _cuda_mem_debug() -> str:
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return "cuda_unavailable"
+        gb = 1024**3
+        alloc = float(torch.cuda.memory_allocated(0)) / gb
+        reserv = float(torch.cuda.memory_reserved(0)) / gb
+        free_b, total_b = torch.cuda.mem_get_info(0)
+        free_gb = float(free_b) / gb
+        total_gb = float(total_b) / gb
+        return (
+            f"alloc_gb={alloc:.2f} reserved_gb={reserv:.2f} "
+            f"free_gb={free_gb:.2f} total_gb={total_gb:.2f}"
+        )
+    except Exception as e:
+        return f"cuda_mem_unavailable({type(e).__name__})"
+
+
 def _try_free_comfy_vram() -> bool:
     """
     Best-effort attempt to free GPU memory inside a running ComfyUI process.
     Safe to call outside ComfyUI (no-ops).
     """
     freed = False
+    actions: list[str] = []
+    before = _cuda_mem_debug()
     try:
         import torch
 
@@ -96,6 +118,7 @@ def _try_free_comfy_vram() -> bool:
             try:
                 torch.cuda.empty_cache()
                 freed = True
+                actions.append("torch.cuda.empty_cache")
             except Exception:
                 pass
     except Exception:
@@ -117,11 +140,21 @@ def _try_free_comfy_vram() -> bool:
                 try:
                     fn()
                     freed = True
+                    actions.append(f"comfy.model_management.{fn_name}")
                 except Exception:
                     pass
     except Exception:
         pass
 
+    after = _cuda_mem_debug()
+    if actions:
+        warnings.warn(
+            "Attempted to free VRAM before GGUF reload: "
+            + ", ".join(actions)
+            + f" | cuda_mem_before({before}) -> after({after})",
+            UserWarning,
+            stacklevel=3,
+        )
     return freed
 
 

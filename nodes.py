@@ -460,9 +460,23 @@ def _torch_cuda_one_liner() -> str:
         name = torch.cuda.get_device_name(0)
     except Exception:
         name = "?"
+    mem = ""
+    try:
+        alloc = int(torch.cuda.memory_allocated(0))
+        reserv = int(torch.cuda.memory_reserved(0))
+        free_b, total_b = torch.cuda.mem_get_info(0)
+        gb = 1024**3
+        mem = (
+            f" cuda_mem_alloc_gb={(alloc/gb):.2f}"
+            f" cuda_mem_reserved_gb={(reserv/gb):.2f}"
+            f" cuda_mem_free_gb={(free_b/gb):.2f}"
+            f" cuda_mem_total_gb={(total_b/gb):.2f}"
+        )
+    except Exception:
+        mem = ""
     return (
         f"torch_cuda_available=True torch.version.cuda={nv!r} "
-        f"pip_wheel_cuda_tag_hint={tag!r} gpu0={name!r}"
+        f"pip_wheel_cuda_tag_hint={tag!r} gpu0={name!r}{mem}"
     )
 
 
