@@ -1,7 +1,7 @@
 [project]
 name = "multimodal-llm-comfyui-node"
 description = "Local-first multimodal LLM nodes for ComfyUI (GGUF+mmproj via llama.cpp, optional Transformers fallback)."
-version = "1.0.0"
+version = "1.0.1"
 license = { file = "LICENSE" }
 # classifiers = [
 # classifiers = [
@@ -32,7 +32,7 @@ Documentation = "https://github.com/theonetwoone/Multimodal-LLM-ComfyUI-node"
 [tool.comfy]
 PublisherId = "theonetwoone"
 DisplayName = "Multimodal — LLM (Local-first: GGUF + Transformers)"
-Icon = ""
+Icon = "https://www.cystyle.it/logo-glitched5.png"
 includes = [
   "__init__.py",
   "__main__.py",
