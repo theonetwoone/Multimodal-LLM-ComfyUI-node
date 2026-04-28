@@ -1,7 +1,7 @@
 [project]
 name = "multimodal-llm-comfyui-node"
 description = "Local-first multimodal LLM nodes for ComfyUI (GGUF+mmproj via llama.cpp, optional Transformers fallback)."
-version = "1.0.1"
+version = "1.0.2"
 license = { file = "LICENSE" }
 # classifiers = [
 # classifiers = [
