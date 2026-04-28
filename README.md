@@ -130,8 +130,8 @@ How to use:
 ## Presets (system + context)
 
 You can add your own `.md` files:
-- System presets: `llm_comfy_multimodal/presets/system/`
-- Context presets: `llm_comfy_multimodal/presets/context/`
+- System presets: `presets/system/`
+- Context presets: `presets/context/`
 
 Restart ComfyUI to refresh the dropdowns.
 
