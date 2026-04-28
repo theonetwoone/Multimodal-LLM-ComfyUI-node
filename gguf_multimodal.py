@@ -83,6 +83,48 @@ def _cache_key(parts: tuple[Any, ...]) -> str:
     return hashlib.sha256(repr(parts).encode("utf-8")).hexdigest()[:24]
 
 
+def _try_free_comfy_vram() -> bool:
+    """
+    Best-effort attempt to free GPU memory inside a running ComfyUI process.
+    Safe to call outside ComfyUI (no-ops).
+    """
+    freed = False
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+                freed = True
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # ComfyUI's own model manager (only exists when running inside ComfyUI).
+    try:
+        import importlib
+
+        mm = importlib.import_module("comfy.model_management")
+        for fn_name in (
+            "soft_empty_cache",
+            "unload_all_models",
+            "unload_all_models_except",
+            "cleanup_models",
+        ):
+            fn = getattr(mm, fn_name, None)
+            if callable(fn):
+                try:
+                    fn()
+                    freed = True
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return freed
+
+
 def _pil_to_data_url(pil_image: Any) -> str:
     buf = io.BytesIO()
     pil_image.save(buf, format="PNG")
@@ -267,7 +309,27 @@ def _get_llama_vlm(
             if not is_generic_load_fail:
                 raise
 
-            # One safe retry: fall back to CPU layers (often succeeds when VRAM is fragmented/occupied).
+            # Retry 1: ask ComfyUI to free VRAM and try again with the same settings.
+            # This helps when another SD model is still resident on the GPU.
+            if int(n_gpu_layers) != 0 and _try_free_comfy_vram():
+                warnings.warn(
+                    "GGUF model load failed; attempting to free ComfyUI VRAM and retry model load.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                try:
+                    _LLAMA_CACHE[key] = Llama(**llama_kw)
+                    return _LLAMA_CACHE[key], key
+                except TypeError:
+                    # If chat_template_kwargs wasn't supported, retry minimal.
+                    llama_kw2 = dict(llama_kw)
+                    llama_kw2.pop("chat_template_kwargs", None)
+                    _LLAMA_CACHE[key] = Llama(**llama_kw2)
+                    return _LLAMA_CACHE[key], key
+                except ValueError:
+                    pass
+
+            # Retry 2 (safe fallback): fall back to CPU layers (often succeeds when VRAM is fragmented/occupied).
             # If the wheel doesn't accept the extra args, we just retry with the minimal set.
             if int(n_gpu_layers) != 0:
                 warnings.warn(
