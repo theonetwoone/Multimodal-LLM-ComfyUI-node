@@ -214,14 +214,19 @@ def _get_llama_vlm(
         ) from err
     from llama_cpp import Llama
 
-    eff_tag = _gguf_vlm_cache_eff_tag(
-        handler_name, allow_qwen25_when_qwen3_missing
-    )
+    mf = os.path.abspath(os.path.expanduser(os.path.expandvars((main_gguf or "").strip())))
+    mp = os.path.abspath(os.path.expanduser(os.path.expandvars((mmproj_gguf or "").strip())))
+    if not os.path.isfile(mf):
+        raise ValueError(f"GGUF main file not found: {mf!r}")
+    if not os.path.isfile(mp):
+        raise ValueError(f"GGUF mmproj file not found: {mp!r}")
+
+    eff_tag = _gguf_vlm_cache_eff_tag(handler_name, allow_qwen25_when_qwen3_missing)
     key = _cache_key(
         (
             "vlm",
-            main_gguf,
-            mmproj_gguf,
+            mf,
+            mp,
             eff_tag,
             int(n_ctx),
             int(n_gpu_layers),
@@ -232,13 +237,13 @@ def _get_llama_vlm(
     if key not in _LLAMA_CACHE:
         ch, _eff2 = _make_chat_handler(
             handler_name,
-            mmproj_gguf,
+            mp,
             verbose=False,
             gguf_chat_template_enable_thinking=gguf_chat_template_enable_thinking,
             allow_qwen25_when_qwen3_missing=allow_qwen25_when_qwen3_missing,
         )
         llama_kw: dict[str, Any] = {
-            "model_path": main_gguf,
+            "model_path": mf,
             "chat_handler": ch,
             "n_ctx": int(n_ctx),
             "n_gpu_layers": int(n_gpu_layers),
@@ -252,6 +257,48 @@ def _get_llama_vlm(
         except TypeError:
             del llama_kw["chat_template_kwargs"]
             _LLAMA_CACHE[key] = Llama(**llama_kw)
+        except ValueError as e:
+            # llama-cpp-python raises a generic ValueError for several root causes:
+            # - VRAM allocation failure (common when another process uses the GPU)
+            # - incompatible / corrupted GGUF
+            # - wheel/build mismatch for the GGUF features needed
+            msg = str(e)
+            is_generic_load_fail = "Failed to load model from file" in msg
+            if not is_generic_load_fail:
+                raise
+
+            # One safe retry: fall back to CPU layers (often succeeds when VRAM is fragmented/occupied).
+            # If the wheel doesn't accept the extra args, we just retry with the minimal set.
+            if int(n_gpu_layers) != 0:
+                warnings.warn(
+                    "GGUF model load failed (often VRAM busy/fragmented). Retrying with n_gpu_layers=0 (CPU). "
+                    "If this succeeds, reduce VRAM pressure (close extra ComfyUI instances, lower n_ctx) or install a better-matching llama-cpp-python wheel.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                llama_kw_retry = dict(llama_kw)
+                llama_kw_retry["n_gpu_layers"] = 0
+                llama_kw_retry.setdefault("use_mmap", False)
+                llama_kw_retry.setdefault("use_mlock", False)
+                try:
+                    _LLAMA_CACHE[key] = Llama(**llama_kw_retry)
+                    return _LLAMA_CACHE[key], key
+                except TypeError:
+                    # Older builds may not support use_mmap/use_mlock
+                    llama_kw_retry.pop("use_mmap", None)
+                    llama_kw_retry.pop("use_mlock", None)
+                    _LLAMA_CACHE[key] = Llama(**llama_kw_retry)
+                    return _LLAMA_CACHE[key], key
+
+            # Re-raise with a higher-signal hint block.
+            raise ValueError(
+                f"{msg}\n\n"
+                "Common causes:\n"
+                "  - VRAM allocation failed (another ComfyUI instance or big SD model already on GPU)\n"
+                "  - GGUF is incompatible with your llama-cpp-python build (wheel mismatch)\n"
+                "  - GGUF file is corrupted / incomplete download\n\n"
+                f"Checked paths:\n  main={mf}\n  mmproj={mp}\n"
+            ) from e
     return _LLAMA_CACHE[key], key
 
 
