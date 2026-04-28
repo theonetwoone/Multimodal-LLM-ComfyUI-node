@@ -1220,6 +1220,13 @@ class MultimodalLLMNode:
                         "label": "keep this node's HF weights cached between runs",
                     },
                 ),
+                "offload_image_mode": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "label": "offload other ComfyUI models before LLM (frees VRAM; can slow SD nodes)",
+                    },
+                ),
                 "log_load_details": (
                     "BOOLEAN",
                     {
@@ -1256,6 +1263,7 @@ class MultimodalLLMNode:
         dtype: str,
         trust_remote_code: bool,
         keep_models_loaded: bool,
+        offload_image_mode: bool,
         log_load_details: bool = True,
         gguf_model_path: str = "",
         gguf_mmproj_path: str = "",
@@ -1325,6 +1333,26 @@ class MultimodalLLMNode:
                 f"gguf_paths_valid={gv} | eff_sampling_seed={eff_seed} "
                 f"generation_seed_mode={generation_seed_mode!r} | {_torch_cuda_one_liner()}",
             )
+
+            if (
+                bool(offload_image_mode)
+                and device == "cuda"
+                and torch.cuda.is_available()
+            ):
+                _llm_diag_trace(
+                    trace_lines,
+                    log_load_details,
+                    f"offload_image_mode: attempting to free VRAM before LLM | {_torch_cuda_one_liner()}",
+                )
+                try:
+                    freed = bool(getattr(gguf_multimodal, "_try_free_comfy_vram", lambda: False)())
+                except Exception:
+                    freed = False
+                _llm_diag_trace(
+                    trace_lines,
+                    log_load_details,
+                    f"offload_image_mode: done freed={freed} | {_torch_cuda_one_liner()}",
+                )
             if log_load_details and image_linked and not use_vision:
                 _llm_diag_trace(
                     trace_lines,
