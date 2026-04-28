@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Cursor
+.cursor/
+
+# ComfyUI / local artifacts (keep models out of repo)
+**/models/**

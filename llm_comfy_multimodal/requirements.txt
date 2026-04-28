@@ -1,0 +1,10 @@
+transformers>=4.45.0
+packaging>=23.0
+accelerate>=0.34.0
+safetensors>=0.4.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+pillow>=10.0.0
+# Optional: GGUF + mmproj vision — install a build matching your CUDA/CPU.
+# Qwen3-VL GGUF needs a wheel that includes Qwen3VLChatHandler (set node handler to qwen3-vl).
+llama-cpp-python>=0.3.0
